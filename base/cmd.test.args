@@ -1,6 +1,11 @@
 args {
   filled;
   outlined;
-  lw = 3.0;
+  lw = "3.0";
+  t = 101;
+  t = 202;
+  ot = 500;
+  ot = 501;
+  ot = 502;
 }
 

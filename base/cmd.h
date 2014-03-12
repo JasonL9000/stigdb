@@ -202,6 +202,13 @@ namespace Base {
         AppendParam(new TUnbackedParam<TSomeCmd>(handler, basis, names, desc));
       }
 
+      /* Declare a pass-by-name parameter with a backer and with a CSV-style argument. */
+      template <typename TSomeCmd, typename TVal>
+      void ParamCsv(TVal (TSomeCmd::*backer), const char *arg_name, TBasis basis, const char *names, const char *desc) {
+        assert(this);
+        AppendParam(new TBackedParam<TSomeCmd, TVal>(backer, arg_name, basis, names, desc, true));
+      }
+
       private:
 
       /* The base class for all command line parameter meta-objects. */
@@ -230,7 +237,9 @@ namespace Base {
           /* Parse a new value for this argument from the text.
              If the text is null, assign the argument a default value.
              Note: The text should not be null if GetIsRequired() returns true. */
-          bool Parse(TCmd *cmd, const char *arg_text, const TMessageConsumer &cb) const;
+          bool Parse(
+              TCmd *cmd, const char *arg_text, bool is_first, bool is_csv,
+              const TMessageConsumer &cb) const;
 
           /* Write the current value of this argument. */
           virtual void Write(std::ostream &strm, const TCmd *cmd) const = 0;
@@ -248,6 +257,10 @@ namespace Base {
           class ValInfo {
             NO_CONSTRUCTION(ValInfo);
             public:
+
+            /* Clear the value.  Containers might override this to do something,
+               but the default does nothing. */
+            static void Clear(TVal &) {}
 
             /* A non-container value can occur at most once. */
             static TRecurrence GetRecurrence() {
@@ -289,6 +302,9 @@ namespace Base {
 
           /* Do-little. */
           virtual ~TArg() {}
+
+          /* Clear the argument. */
+          virtual void Clear(TCmd *cmd) const = 0;
 
           /* Assign to the argument the default value for its type. */
           virtual void AssignDefault(TCmd *cmd) const = 0;
@@ -356,8 +372,18 @@ namespace Base {
         /* See TRecurrence. */
         TRecurrence GetRecurrence() const {
           assert(this);
+          if (Csv) {
+            return Once;
+          }
           auto arg = TryGetArg();
           return arg ? arg->GetRecurrence() : Once;
+        }
+
+        /* True iff. this parameter is to be parsed as CSV, which means recurrence
+           is always once and the type is always a container. */
+        bool IsCsv() const {
+          assert(this);
+          return Csv;
         }
 
         /* True if at least one of our names is the same as the given name. */
@@ -366,7 +392,7 @@ namespace Base {
         /* Be notified that this parameter has been recognized on the command line.
            The 'arg_text' can be null if the command line didn't provide any such text.
            Call back with errors, and short-circuit of the callback says to do so. */
-        virtual bool OnRecognition(TCmd *cmd, const char *arg_text, const TMessageConsumer &cb) const = 0;
+        virtual bool OnRecognition(TCmd *cmd, const char *arg_text, bool is_first, const TMessageConsumer &cb) const = 0;
 
         /* Return the argument delegate, if any.
            A parameter which takes no argument will return null. */
@@ -428,6 +454,12 @@ namespace Base {
           private:
 
           /* See base class. */
+          virtual void Clear(TCmd *cmd) const {
+            assert(this);
+            ValInfo<TVal>::Clear(GetVal(cmd));
+          }
+
+          /* See base class. */
           virtual void AssignDefault(TCmd *cmd) const {
             assert(this);
             auto default_val = ValInfo<TVal>::TryGetDefault();
@@ -444,8 +476,9 @@ namespace Base {
         };  // TTypedArg<TVal>
 
         /* Do-little. */
-        TParam(TBasis basis, const char *names, const char *desc)
-            : Basis(basis), Names(names), Desc(desc) {
+        TParam(
+            TBasis basis, const char *names, const char *desc, bool is_csv)
+            : Basis(basis), Names(names), Desc(desc), Csv(is_csv) {
           assert(desc);
         }
 
@@ -464,6 +497,9 @@ namespace Base {
         /* A helpful description of the parameter.  Never null. */
         const char *Desc;
 
+        /* See accessor. */
+        bool Csv;
+
       };  // TParam
 
       /* A parameter that is backed by storage in a TCmd object. */
@@ -477,13 +513,16 @@ namespace Base {
         typedef TVal (TSomeCmd::*TBacker);
 
         /* Do-little. */
-        TBackedParam(TBacker backer, const char *arg_name, TBasis basis, const char *names, const char *desc)
-            : TParam(basis, names, desc), Arg(backer, arg_name) {}
+        TBackedParam(
+            TBacker backer, const char *arg_name, TBasis basis, const char *names, const char *desc,
+            bool is_csv = false)
+            : TParam(basis, names, desc, is_csv), Arg(backer, arg_name) {}
 
         /* See base class. */
-        virtual bool OnRecognition(TCmd *cmd, const char *arg_text, const TMessageConsumer &cb) const {
+        virtual bool OnRecognition(
+            TCmd *cmd, const char *arg_text, bool is_first, const TMessageConsumer &cb) const {
           assert(this);
-          return Arg.Parse(cmd, arg_text, cb);
+          return Arg.Parse(cmd, arg_text, is_first, IsCsv(), cb);
         }
 
         /* See base class. */
@@ -551,11 +590,14 @@ namespace Base {
         typedef bool (TSomeCmd::*THandler)(const TMessageConsumer &cb);
 
         /* Construct as a pass-by-name parameter. */
-        TUnbackedParam(THandler handler, TBasis basis, const char *names, const char *desc)
-            : TParam(basis, names, desc), Handler(handler) {}
+        TUnbackedParam(
+            THandler handler, TBasis basis, const char *names, const char *desc,
+            bool is_csv)
+            : TParam(basis, names, desc, is_csv), Handler(handler) {}
 
         /* See base class. */
-        virtual bool OnRecognition(TCmd *cmd, const char *, const TMessageConsumer &cb) const {
+        virtual bool OnRecognition(
+            TCmd *cmd, const char *, bool, const TMessageConsumer &cb) const {
           assert(this);
           return (cmd->*Handler)(cb);
         }
@@ -584,7 +626,9 @@ namespace Base {
 
       /* Write col1 and col2 to the stream as wrapped columns of text.
          Make each line no longer than line_size. */
-      static void WriteWrapped(std::ostream &strm, size_t col1_size, size_t line_size, const std::string &col1, const std::string &col2);
+      static void WriteWrapped(
+          std::ostream &strm, size_t col1_size, size_t line_size,
+          const std::string &col1, const std::string &col2);
 
       /* A description of the parameter. */
       const char *Desc;
@@ -701,6 +745,8 @@ namespace Base {
     NO_CONSTRUCTION(ValInfo);
     public:
 
+    static void Clear(bool &) {}
+
     static TRecurrence GetRecurrence() {
       return Once;
     }
@@ -739,6 +785,8 @@ namespace Base {
     NO_CONSTRUCTION(ValInfo);
     public:
 
+    static void Clear(std::string &) {}
+
     static TRecurrence GetRecurrence() {
       return Once;
     }
@@ -772,6 +820,11 @@ namespace Base {
   class TCmd::TMeta::TParam::TArg::ValInfo<std::vector<TVal>> {
     NO_CONSTRUCTION(ValInfo);
     public:
+
+    static void Clear(std::vector<TVal> &vals) {
+      assert(&vals);
+      vals.clear();
+    }
 
     static TRecurrence GetRecurrence() {
       return Many;
@@ -807,6 +860,11 @@ namespace Base {
   class TCmd::TMeta::TParam::TArg::ValInfo<std::set<TVal>> {
     NO_CONSTRUCTION(ValInfo);
     public:
+
+    static void Clear(std::set<TVal> &vals) {
+      assert(&vals);
+      vals.clear();
+    }
 
     static TRecurrence GetRecurrence() {
       return NoDupes;

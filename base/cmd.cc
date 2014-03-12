@@ -148,15 +148,29 @@ TCmd::TMeta::TMeta(const char *desc)
   Param(&TCmd::ArgsFiles, "args", Optional, "args\0", "Read more args from a file.");
 }
 
-bool TCmd::TMeta::TParam::TArg::Parse(TCmd *cmd, const char *arg_text, const TMessageConsumer &cb) const {
+bool TCmd::TMeta::TParam::TArg::Parse(
+    TCmd *cmd, const char *arg_text, bool is_first, bool is_csv,
+    const TMessageConsumer &cb) const {
   assert(this);
   if (arg_text) {
     try {
-      istringstream strm(arg_text);
-      Read(strm, cmd);
-      if (strm.fail()) {
-        DEFINE_ERROR(error_t, invalid_argument, "syntax error");
-        THROW_ERROR(error_t);
+      if (is_first) {
+        Clear(cmd);
+      }
+      for (;;) {
+        auto *limit = arg_text;
+        for (; *limit && (!is_csv || *limit != ','); ++limit);
+        string temp(arg_text, limit - arg_text);
+        istringstream strm(temp);
+        Read(strm, cmd);
+        if (strm.fail()) {
+          DEFINE_ERROR(error_t, invalid_argument, "syntax error");
+          THROW_ERROR(error_t);
+        }
+        if (!*limit) {
+          break;
+        }
+        arg_text = limit + 1;
       }
     } catch (const exception &ex) {
       ostringstream strm;
@@ -537,7 +551,8 @@ bool TCmd::TMeta::TParser::TRun::CheckForRequired(const vector<const TParam *> &
   return true;
 }
 
-bool TCmd::TMeta::TParser::TRun::OnRecognition(const TParam *param, TCmd *cmd, const char *arg_text, const TMessageConsumer &cb) {
+bool TCmd::TMeta::TParser::TRun::OnRecognition(
+    const TParam *param, TCmd *cmd, const char *arg_text, const TMessageConsumer &cb) {
   assert(this);
   assert(param);
   assert(&cb);
@@ -548,7 +563,7 @@ bool TCmd::TMeta::TParser::TRun::OnRecognition(const TParam *param, TCmd *cmd, c
     strm << '"' << param->GetDiagnosticName() << "\": given more than once";
     return cb(strm.str());
   }
-  return param->OnRecognition(cmd, arg_text, cb);
+  return param->OnRecognition(cmd, arg_text, count == 1, cb);
 }
 
 mutex TCmd::TMeta::TParser::TRun::Mutex;
