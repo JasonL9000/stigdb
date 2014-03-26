@@ -18,6 +18,66 @@
 
 #include <base/cmd.h>
 
+#include <iostream>
+#include <stdexcept>
+
+#include <wordexp.h>
+
+#include <base/zero.h>
+#include <test/kit.h>
+
+using namespace std;
+
+class TWordExp final {
+  NO_COPY_SEMANTICS(TWordExp);
+  public:
+
+  /* TODO */
+  explicit TWordExp(const char *str) {
+    Base::Zero(Os);
+    switch (wordexp(str, &Os, 0)) {
+      case 0: {
+        break;
+      }
+      default: {
+        throw runtime_error("barf");
+      }
+    }
+  }
+
+  /* TODO */
+  ~TWordExp() {
+    assert(this);
+    wordfree(&Os);
+  }
+
+  /* TODO */
+  size_t GetArgc() const noexcept {
+    assert(this);
+    return Os.we_wordc;
+  }
+
+  /* TODO */
+  char **GetArgv() const noexcept {
+    assert(this);
+    return Os.we_wordv;
+  }
+
+  /* TODO */
+  wordexp_t Os;
+
+};  // TWordExp
+
+FIXTURE(Typical) {
+  TWordExp we("--hello --doctor --name=$PATH");
+  for (size_t i = 0; i < we.GetArgc(); ++i) {
+    cout << i << ", \"" << we.GetArgv()[i] << '"' << endl;
+  }
+}
+
+#if 0
+#include <base/cmd.h>
+
 #include <cstring>
 #include <initializer_list>
 #include <string>
@@ -238,4 +298,5 @@ FIXTURE(ArgsFile) {
   }
   EXPECT_EQ(circle.Radius, 2.5);
 }
+#endif
 
