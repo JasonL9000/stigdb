@@ -1902,15 +1902,20 @@ void TServer::ServeMemcacheClient(TFd &&fd_original, const TAddress &client_addr
 
   try {
     //TODO: Detect and handle eof without an exception?
+
+    syslog(LOG_INFO, "memcachiness %d", __LINE__);
     if (in.Peek() != Mynde::BinaryMagicRequest) {
+      syslog(LOG_INFO, "memcachiness %d", __LINE__);
       const char err_msg[] = "SERVER_ERROR text protocol is not supported.\r\n";
       out.Write(err_msg, GetArrayLen(err_msg));
       return;
     }
+    syslog(LOG_INFO, "memcachiness %d", __LINE__);
 
     // Loop processing requets until we hit eof or explicitly get an exit command.
     //TODO: Detect and handle eof without an exception?
     for(;;) {
+      syslog(LOG_INFO, "memcachiness %d", __LINE__);
       //TODO: We should probably wait for notifications from indy somewhere...
       //NOTE: We make this on the heap so that we can pass it to the response generation thread
       // We do the two threads because the protocol states that pending unread responses shouldn't block requests from
@@ -1921,27 +1926,33 @@ void TServer::ServeMemcacheClient(TFd &&fd_original, const TAddress &client_addr
       // TResponseBuilder resp(req);
 
       // We don't support CAS so it should always be null for now.
+      syslog(LOG_INFO, "memcachiness %d", __LINE__);
       if (req.GetCas()) {
+        syslog(LOG_INFO, "memcachiness %d", __LINE__);
         NOT_IMPLEMENTED();
       }
 
       if (req.GetFlags().Key && req.GetOpcode() != Mynde::TRequest::TOpcode::Get) {
+        syslog(LOG_INFO, "memcachiness %d", __LINE__);
         // TODO: This needs to be a binary error message....
         const char err_msg[] = "SERVER_ERROR Only Get is allowed to return the key (GetK, GetKQ).\r\n";
         out.Write(err_msg, GetArrayLen(err_msg));
         return;  // Closes the RAII connection
       }
 
+      syslog(LOG_INFO, "memcachiness %d", __LINE__);
       Mynde::TResponseHeader hdr;
       Zero(hdr);
       hdr.Magic = Mynde::BinaryMagicResponse;
       hdr.Opcode = static_cast<uint8_t>(req.GetOpcode());
       assert(req.GetOpcode() == Mynde::TRequest::TOpcode(hdr.Opcode)); // Make sure we round trip properly.
       hdr.Opaque = req.GetOpaque();
+      syslog(LOG_INFO, "memcachiness %d", __LINE__);
 
       // TODO: Genericize memcache key -> indy key conversion (Make it a function)
       switch (req.GetOpcode()) {
         case Mynde::TRequest::TOpcode::Get: {
+          syslog(LOG_INFO, "memcachiness %d", __LINE__);
           // TODO: Change keys and values to be start, limit based rather than doing this std::string marshalling
           Native::TBlob key(req.GetKey().GetData(), req.GetKey().GetSize());
 
@@ -1955,30 +1966,35 @@ void TServer::ServeMemcacheClient(TFd &&fd_original, const TAddress &client_addr
                   Atom::TCore(&context_arena, Sabot::State::TAny::TWrapper(Native::State::New(key, state_alloc)))))];
 
           Atom::TCore void_comp;
-
+          syslog(LOG_INFO, "memcachiness %d", __LINE__);
           if(req.GetFlags().Key) {
+            syslog(LOG_INFO, "memcachiness %d", __LINE__);
             hdr.KeyLength = req.GetKey().GetSize();
           }
-
-          if (memcmp(&void_comp, &response_value.GetCore(), sizeof(void_comp)) != 0) {
-            Native::TBlob value = Sabot::AsNative<Native::TBlob>(*Sabot::State::TAny::TWrapper(response_value.GetState(state_alloc)));
-
-            hdr.TotalBodyLength = value.size();
-            if(req.GetFlags().Key) {
-              out << req.GetKey();
-            }
-            out << hdr;
-            out.Write(value.c_str(), value.size());
-
-          } else {
+          if (memcmp(&void_comp, &response_value.GetCore(), sizeof(void_comp)) == 0) {
+            syslog(LOG_INFO, "memcachiness %d", __LINE__);
             if (!req.GetFlags().Quiet) {
+              syslog(LOG_INFO, "memcachiness %d", __LINE__);
+              out << hdr;
               if(req.GetFlags().Key) {
+                syslog(LOG_INFO, "memcachiness %d", __LINE__);
                 out << req.GetKey();
               }
-              out << hdr;
             }
-            continue;
+          } else {
+            syslog(LOG_INFO, "memcachiness %d", __LINE__);
+            Native::TBlob value = Sabot::AsNative<Native::TBlob>(*Sabot::State::TAny::TWrapper(response_value.GetState(state_alloc)));
+            hdr.TotalBodyLength = value.size();
+            out << hdr;
+            if(req.GetFlags().Key) {
+              syslog(LOG_INFO, "memcachiness %d", __LINE__);
+              out << req.GetKey();
+            }
+            syslog(LOG_INFO, "memcachiness %d", __LINE__);
+            out.Write(value.c_str(), value.size());
           }
+          syslog(LOG_INFO, "memcachiness %d", __LINE__);
+          break;
         }
         case Mynde::TRequest::TOpcode::Set: {
           Native::TBlob key(req.GetKey().GetData(), req.GetKey().GetSize());
@@ -2021,7 +2037,7 @@ void TServer::ServeMemcacheClient(TFd &&fd_original, const TAddress &client_addr
           if (!req.GetFlags().Quiet) {
             out << hdr;
           }
-          continue;
+          break;
         }
         default: { NOT_IMPLEMENTED(); }
       }

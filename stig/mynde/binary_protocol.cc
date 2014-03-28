@@ -23,6 +23,8 @@
 #include <stig/mynde/binary_protocol.h>
 #include <stig/mynde/protocol.h>
 
+#include <syslog.h>
+
 #include <base/not_implemented.h>
 #include <io/endian.h>
 
@@ -85,13 +87,17 @@ TOut &Stig::Mynde::operator<<(TOut &out, const TResponseHeader &that) {
 }
 
 TRequest::TRequest(TIn &in) : Flags({false,false}), Opaque(0), Cas(0) {
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
   TRequestHeader header;
   in >> header;
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
 
   if (header.Magic != BinaryMagicRequest) {
+    syslog(LOG_INFO, "requestiness %d", __LINE__);
     throw std::invalid_argument("Invalid magic byte");
   }
 
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
   // Validate fields, one at a time filling in our data representation from the header.
   // NOTE: Everything in header is untrusted.
   switch (header.Opcode) {
@@ -191,64 +197,89 @@ TRequest::TRequest(TIn &in) : Flags({false,false}), Opaque(0), Cas(0) {
       Flags.Quiet = true;
       break;
     default:
+      syslog(LOG_INFO, "requestiness %d", __LINE__);
       throw std::invalid_argument("Illegal opcode");
   }
 
   // Make sure we only have a key if we're allowed to
   // And that it is of the right length
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
   if (Opcode == TOpcode::Quit || Opcode == TOpcode::Flush || Opcode == TOpcode::NoOp || Opcode == TOpcode::Version) {
+    syslog(LOG_INFO, "requestiness %d", __LINE__);
     if (header.KeyLength) {
+      syslog(LOG_INFO, "requestiness %d", __LINE__);
       throw std::invalid_argument("Specified operation doesn't take a key");
     }
   } else {
+    syslog(LOG_INFO, "requestiness %d", __LINE__);
     if (header.KeyLength > 250) {
+      syslog(LOG_INFO, "requestiness %d", __LINE__);
       throw std::invalid_argument("Key too long");
     }
   }
 
 
   // Check extras length (depends on request kind)
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
   if (Opcode == TOpcode::Get) {
+    syslog(LOG_INFO, "requestiness %d", __LINE__);
     if (header.ExtrasLength != 4) {
+      syslog(LOG_INFO, "requestiness %d", __LINE__);
       throw std::invalid_argument("Extras not the correct length (4 bytes)");
     }
   } else if (Opcode == TOpcode::Set || Opcode == TOpcode::Add || Opcode == TOpcode::Replace) {
+    syslog(LOG_INFO, "requestiness %d", __LINE__);
     if (header.ExtrasLength != 8) {
+      syslog(LOG_INFO, "requestiness %d", __LINE__);
       throw std::invalid_argument("Extras not the correct length (8 bytes)");
     }
   } else if (Opcode == TOpcode::Increment || Opcode == TOpcode::Decrement) {
+    syslog(LOG_INFO, "requestiness %d", __LINE__);
     if (header.ExtrasLength != 20) {
+      syslog(LOG_INFO, "requestiness %d", __LINE__);
       throw std::invalid_argument("Extras not the correct length (20 bytes)");
     }
   } else {
+    syslog(LOG_INFO, "requestiness %d", __LINE__);
     if (header.ExtrasLength) {
+      syslog(LOG_INFO, "requestiness %d", __LINE__);
       throw std::invalid_argument("Extras not the correct length (0 bytes)");
     }
   }
 
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
   if (header.DataType) {
+    syslog(LOG_INFO, "requestiness %d", __LINE__);
     throw std::invalid_argument("Data type must be null");
   }
 
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
   if (header.Reserved) {
+    syslog(LOG_INFO, "requestiness %d", __LINE__);
     throw std::invalid_argument("Reserved field must be null");
   }
 
   // Check total body length
   //NOTE: This guarantees we won't underflow in later calculations, as well as checking that the packet is well formed
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
   if (header.TotalBodyLength < header.ExtrasLength + header.KeyLength) {
+    syslog(LOG_INFO, "requestiness %d", __LINE__);
     throw std::invalid_argument("Total body length is too short to contain key + extras");
   }
 
   uint32_t value_len = header.TotalBodyLength - header.ExtrasLength - header.KeyLength;
 
   // Only some operations allow a value
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
   if (Opcode == TOpcode::Set || Opcode == TOpcode::Add || Opcode == TOpcode::Replace || Opcode == TOpcode::Append ||
       Opcode == TOpcode::Prepend) {
+    syslog(LOG_INFO, "requestiness %d", __LINE__);
     // TODO: append and prepend the max value length depends on how much is already in the value of what we're inserting to.
 
   } else {
+    syslog(LOG_INFO, "requestiness %d", __LINE__);
     if (value_len != 0) {
+      syslog(LOG_INFO, "requestiness %d", __LINE__);
       throw std::invalid_argument("Given opcode doesn't accept a value");
     }
   }
@@ -260,7 +291,11 @@ TRequest::TRequest(TIn &in) : Flags({false,false}), Opaque(0), Cas(0) {
   Cas = header.Cas;
 
   // Read extras, key, and value. We've already proofed which are needed (and made sure they were provided).
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
   Extras.Fill(header.ExtrasLength, in);
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
   Key.Fill(header.KeyLength, in);
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
   Value.Fill(value_len, in);
+  syslog(LOG_INFO, "requestiness %d", __LINE__);
 }
